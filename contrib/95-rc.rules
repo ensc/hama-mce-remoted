@@ -1,0 +1,12 @@
+ACTION=="add", SUBSYSTEM=="input", DEVPATH=="*/event*", ATTRS{name}=="HID 05a4:9881", ATTRS{phys}=="*/input0", \
+	GROUP="vdr", MODE="0660", \
+	RUN+="/sbin/initctl emit -n hama-mce-control-$env{ACTION} RC_ALIAS=hama PHYS=0", \
+	SYMLINK+="input/event-hama0"
+
+ACTION=="add", SUBSYSTEM=="input", DEVPATH=="*/event*", ATTRS{name}=="HID 05a4:9881", ATTRS{phys}=="*/input1", \
+	GROUP="vdr", MODE="0660", \
+	RUN+="/sbin/initctl emit -n hama-mce-control-$env{ACTION} RC_ALIAS=hama PHYS=1", \
+	SYMLINK+="input/event-hama1"
+
+ACTION=="remove", ATTRS{name}=="HID 05a4:9881", \
+	RUN+="/sbin/initctl emit -n hama-mce-control-$env{ACTION} RC_ALIAS=hama"
