@@ -69,7 +69,7 @@ struct input_state {
 #define D(_mask, _key, _code) \
 	{ _mask, _key, _code, # _code }
 
-static struct key_definition	KEY_DEFS[] = {
+static struct key_definition const	KEY_DEFS[] = {
 	D( 0, KEY_HOMEPAGE,          KEY_HOMEPAGE ),
 	D( 0, KEY_SLEEP,             KEY_SLEEP ),
 
