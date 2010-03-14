@@ -1,0 +1,1 @@
+dir	/var/run/hama-mce	0750 0 83
