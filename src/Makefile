@@ -12,4 +12,4 @@ install:		${sbin_PROGRAMS}
 	${INSTALL_PROG} ${sbin_PROGRAMS} ${DESTDIR}${sbindir}/
 
 hama-mce-remoted:	main.c
-	${CC} ${CFLAGS} $^ -o $@
+	${CC} ${CFLAGS} $(LDFLAGS) $^ -o $@
