@@ -33,6 +33,8 @@
 #include <linux/input.h>
 #include "systemd/sd-daemon.h"
 
+#define ARRAY_SIZE(_a) (sizeof(_a) / sizeof((_a)[0]))
+
 static const enum { OUT_LIRC, OUT_DEV }		OUT_MODE = OUT_LIRC;
 
 enum {
@@ -142,7 +144,7 @@ static void fill_keyname(char *dst, struct input_event const *ev, unsigned int c
 
 	switch (ev->type) {
 	case EV_KEY:
-		for (i = 0; i < sizeof KEY_DEFS / sizeof KEY_DEFS[0]; ++i) {
+		for (i = 0; i < ARRAY_SIZE(KEY_DEFS); ++i) {
 			if (KEY_DEFS[i].code == ev->code) {
 				strcpy(dst, KEY_DEFS[i].str);
 				return;
@@ -166,7 +168,7 @@ static bool fill_key(struct input_event *ev, unsigned long mask, unsigned int ke
 {
 	size_t		i;
 
-	for (i = 0; i < sizeof KEY_DEFS / sizeof KEY_DEFS[0]; ++i) {
+	for (i = 0; i < ARRAY_SIZE(KEY_DEFS); ++i) {
 		if (KEY_DEFS[i].mask == mask &&
 		    KEY_DEFS[i].key  == key) {
 			ev->type = EV_KEY;
@@ -403,7 +405,7 @@ int main(int argc, char *argv[])
 			[1] = 200,	/* 1/rate */
 		};
 
-		for (i = 0; i < sizeof in / sizeof in[0]; ++i) {
+		for (i = 0; i < ARRAY_SIZE(in); ++i) {
 			while (read(in[0].fd, &ev, sizeof ev) > 0)
 				;		/* noop */
 
@@ -429,9 +431,9 @@ int main(int argc, char *argv[])
 			},
 		};
 
-		poll(fds, sizeof fds/sizeof fds[0], -1);
+		poll(fds, ARRAY_SIZE(fds), -1);
 
-		for (i = 0; i < sizeof fds/sizeof fds[0]; ++i)
+		for (i = 0; i < ARRAY_SIZE(fds); ++i)
 			if (fds[i].revents & (POLLHUP|POLLERR|POLLNVAL))
 				exit(1);
 
