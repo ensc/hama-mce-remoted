@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <sysexits.h>
 
 #include <unistd.h>
 #include <fcntl.h>
@@ -30,6 +31,7 @@
 #include <sys/un.h>
 
 #include <linux/input.h>
+#include "systemd/sd-daemon.h"
 
 static const enum { OUT_LIRC, OUT_DEV }		OUT_MODE = OUT_LIRC;
 
@@ -351,10 +353,29 @@ int main(int argc, char *argv[])
 	int			fd_out;
 	unsigned long		tmp;
 
+	if (argc < 3) {
+		fprintf(stderr, "missing parameters\n");
+		return EX_USAGE;
+	}
+
 	in[0].fd = open(argv[1], O_RDONLY | O_NONBLOCK);
 	in[1].fd = open(argv[2], O_RDONLY | O_NONBLOCK);
 
-	if (OUT_MODE == OUT_LIRC) {
+
+	if (argc < 4 && sd_listen_fds(0) > 0) {
+		fd_out = SD_LISTEN_FDS_START + 1;
+		if (shutdown(fd_out, SHUT_RD) < 0)
+			fd_out = -1;
+	} else if (argc < 4) {
+		fprintf(stderr, "missing lirc socket\n");
+		return EX_USAGE;
+	} else {
+		fd_out = -1;
+	}
+
+	if (fd_out >= 0)
+		;			/* noop */
+	else if (OUT_MODE == OUT_LIRC) {
 		struct sockaddr_un	addr_out = {
 			.sun_family	=  AF_UNIX,
 		};
