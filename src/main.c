@@ -406,10 +406,10 @@ int main(int argc, char *argv[])
 		};
 
 		for (i = 0; i < ARRAY_SIZE(in); ++i) {
-			while (read(in[0].fd, &ev, sizeof ev) > 0)
+			while (read(in[i].fd, &ev, sizeof ev) > 0)
 				;		/* noop */
 
-			ioctl(in[0].fd, EVIOCSREP, rep);
+			ioctl(in[i].fd, EVIOCSREP, rep);
 		}
 	}
 
