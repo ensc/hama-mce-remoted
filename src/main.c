@@ -349,6 +349,31 @@ static void handle_input(struct input_state *st, int out_fd)
 
 }
 
+static int accept_connection(int s)
+{
+	int		res;
+
+	if (listen(s, 1) < 0) {
+		perror("listen()");
+		return -1;
+	}
+
+	res = accept(s, NULL, NULL);
+	if (res < 0) {
+		perror("accept()");
+		return -1;
+	}
+
+	if (shutdown(res, SHUT_RD) < 0) {
+		perror("shutdown()");
+		close(res);
+		return -1;
+	}
+
+	close(s);
+	return res;
+}
+
 int main(int argc, char *argv[])
 {
 	struct input_state	in[2] = {};
@@ -363,11 +388,8 @@ int main(int argc, char *argv[])
 	in[0].fd = open(argv[1], O_RDONLY | O_NONBLOCK);
 	in[1].fd = open(argv[2], O_RDONLY | O_NONBLOCK);
 
-
 	if (argc < 4 && sd_listen_fds(0) > 0) {
-		fd_out = accept(SD_LISTEN_FDS_START + 0, NULL, NULL);
-		if (shutdown(fd_out, SHUT_RD) < 0)
-			fd_out = -1;
+		fd_out = accept_connection(SD_LISTEN_FDS_START + 0);
 	} else if (argc < 4) {
 		fprintf(stderr, "missing lirc socket\n");
 		return EX_USAGE;
@@ -382,20 +404,24 @@ int main(int argc, char *argv[])
 			.sun_family	=  AF_UNIX,
 		};
 		int		s = socket(AF_UNIX, SOCK_STREAM, 0);
-		socklen_t	l = sizeof addr_out;
 
 		strncpy(addr_out.sun_path, argv[3], sizeof addr_out.sun_path);
 		bind(s, (void *)&addr_out, sizeof addr_out);
-		listen(s, 1);
-		fd_out = accept(s, (void *)&addr_out, &l);
-		shutdown(fd_out, SHUT_RD);
+
+		fd_out = accept_connection(s);
 	} else {
 		fd_out = open(argv[3], O_WRONLY);
 	}
 
+	if (fd_out < 0)
+		return EX_OSERR;
+
 	tmp = 1;
-	ioctl(in[0].fd, EVIOCGRAB, &tmp);
-	ioctl(in[1].fd, EVIOCGRAB, &tmp);
+	if (ioctl(in[0].fd, EVIOCGRAB, &tmp) < 0 ||
+	    ioctl(in[1].fd, EVIOCGRAB, &tmp) < 0) {
+		perror("ioctl(..., EVICGRAB)");
+		return EX_IOERR;
+	}
 
 	{
 		struct input_event	ev;
