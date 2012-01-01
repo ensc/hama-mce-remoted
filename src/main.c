@@ -365,7 +365,7 @@ int main(int argc, char *argv[])
 
 
 	if (argc < 4 && sd_listen_fds(0) > 0) {
-		fd_out = SD_LISTEN_FDS_START + 0;
+		fd_out = accept(SD_LISTEN_FDS_START + 0, NULL, NULL);
 		if (shutdown(fd_out, SHUT_RD) < 0)
 			fd_out = -1;
 	} else if (argc < 4) {
