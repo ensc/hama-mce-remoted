@@ -406,6 +406,7 @@ int main(int argc, char *argv[])
 {
 	struct input_state	in[2] = {};
 	int			fd_out;
+	unsigned long		tmp;
 	struct event_file	event_kbd = { .name = NULL };
 	struct event_file	event_mouse = { .name = NULL };
 	int			rc;
