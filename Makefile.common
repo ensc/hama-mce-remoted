@@ -4,9 +4,13 @@ INSTALL = install
 MKDIR = ${INSTALL} -d -m 0755
 INSTALL_DATA = ${INSTALL} -p -m 0644
 INSTALL_PROG = ${INSTALL} -p -m 0755
+PKG_CONFIG = pkg-config
 
 CFLAGS = -Wall -W -std=gnu99 -O2 -g3 -D_FORTIFY_SOURCE=2 -fstack-protector
 
 prefix = /usr/local
 sysconfdir = /etc
 sbindir = ${prefix}/sbin
+
+systemd_unitdir = $(shell $(PKG_CONFIG) --variable=systemdsystemunitdir systemd || \
+		    echo "systemd.pc-missing")
