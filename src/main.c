@@ -342,7 +342,7 @@ static void handle_input(struct input_state *st, int out_fd)
 				n = sizeof st->ev;
 				l = write(out_fd, &st->ev, n);
 
-				if (n == l && OUT_MODE == OUT_UINPUT) {
+				if (n == (size_t)l && OUT_MODE == OUT_UINPUT) {
 					struct input_event	syn_ev = {
 						.type	=  EV_SYN,
 						.code	=  SYN_REPORT,
