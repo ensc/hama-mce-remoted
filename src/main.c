@@ -20,6 +20,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <ctype.h>
 #include <stdbool.h>
 #include <getopt.h>
 #include <errno.h>
@@ -40,6 +41,7 @@
 
 static struct option const	CMDLINE_OPTIONS[] = {
 	{ "events",      required_argument, NULL, 'e' },
+	{ "keymap",      required_argument, NULL, 'k' },
 	{ }
 };
 
@@ -80,7 +82,7 @@ struct input_state {
 #define D(_mask, _key, _code) \
 	{ _mask, _key, _code, # _code }
 
-static struct key_definition const	KEY_DEFS[] = {
+static struct key_definition 		KEY_DEFS[] = {
 	D( 0, KEY_HOMEPAGE,		KEY_HOMEPAGE ),
 	D( 0, KEY_SLEEP,		KEY_SLEEP ),
 
@@ -445,6 +447,82 @@ static int fill_event_file(struct event_file *kbd,
 	return 0;
 }
 
+static bool read_keymap(char const *fname)
+{
+	FILE		*f = fopen(fname, "r");
+	char		*line = NULL;
+	size_t		line_sz = 0;
+	bool		rc = false;
+	unsigned int	line_num;
+
+	if (!f) {
+		fprintf(stderr, "failed to open keymap file '%s': %m\n",
+			fname);
+		return false;
+	}
+
+	for (line_num = 1;; ++line_num) {
+		ssize_t		l = getline(&line, &line_sz, f);
+		char		*ptr;
+		char		*err_ptr;
+		unsigned int	scancode;
+		unsigned int	keyid;
+
+		if (l < 0 && feof(f)) {
+			rc = true;
+			break;
+		} else if (l < 0) {
+			fprintf(stderr,
+				"failed to read from keymap file '%s': %m\n",
+				fname);
+			break;
+		}
+
+		ptr = strchr(line, '#');
+		if (ptr)
+			*ptr = '\0';
+
+		ptr = line;
+		while (isspace(*ptr))
+			++ptr;
+
+		scancode = strtoul(ptr, &err_ptr, 0);
+		if (err_ptr == ptr || !isspace(*err_ptr)) {
+			fprintf(stderr, SD_WARNING "%s:%u invalid scancode\n",
+				fname, line_num);
+			continue;
+		}
+
+		keyid = strtoul(ptr, &err_ptr, 0);
+		if (err_ptr == ptr || (!isspace(*err_ptr) && *err_ptr)) {
+			fprintf(stderr, SD_WARNING "%s:%u invalid keyid\n",
+				fname, line_num);
+			continue;
+		}
+
+		if (scancode >= ARRAY_SIZE(KEY_DEFS)) {
+			fprintf(stderr, SD_WARNING "%s:%u unknown scancode %u\n",
+				fname, line_num, scancode);
+			continue;
+		}
+
+		if (keyid >= KEY_MAX) {
+			fprintf(stderr, SD_WARNING "%s:%u unsupported keyid %u\n",
+				fname, line_num, scancode);
+			continue;
+		}
+
+		fprintf(stderr, SD_DEBUG "mapping %u to %04x\n",
+			scancode, keyid);
+
+		KEY_DEFS[scancode].code = keyid;
+	}
+
+	fclose(f);
+
+	return rc;
+}
+
 int main(int argc, char *argv[])
 {
 	struct input_state	in[2] = {};
@@ -467,6 +545,11 @@ int main(int argc, char *argv[])
 					     optarg);
 			if (rc)
 				return rc;
+			break;
+
+		case 'k':
+			if (!read_keymap(optarg))
+				return EX_DATAERR;
 			break;
 
 		default:
