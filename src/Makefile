@@ -1,7 +1,11 @@
-include ../Makefile.common
+srcdir = .
+VPATH = $(abspath ${srcdir})
 
-AM_CFLAGS = -ffunction-sections
-AM_LDFLAGS = -Wl,--gc-sections
+include ${srcdir}/../Makefile.common
+
+WARN_OPTS = -Wall -W -Wno-missing-field-initializers
+AM_CFLAGS = -std=gnu99 -Wall ${WARN_OPTS}
+AM_LDFLAGS =
 
 sbin_PROGRAMS =	hama-mce-remoted
 
@@ -14,8 +18,10 @@ all:	${sbin_PROGRAMS}
 clean:
 	rm -f ${sbin_PROGRAMS}
 
-install:		${sbin_PROGRAMS}
-	${MKDIR} ${DESTDIR}${sbindir}
+${DESTDIR}${sbindir}:
+	${MKDIR} '$@'
+
+install:		${sbin_PROGRAMS} | ${DESTDIR}${sbindir}
 	${INSTALL_PROG} ${sbin_PROGRAMS} ${DESTDIR}${sbindir}/
 
 hama-mce-remoted:	main.c
