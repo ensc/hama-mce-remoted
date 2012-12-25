@@ -313,6 +313,9 @@ static void handle_input(struct input_state *st, int out_fd)
 
 		break;
 
+	case EV_REP:
+		break;
+
 	default:	;
 		fprintf(stderr, SD_WARNING "unsupported event type %02x\n",
 			ev.type);
@@ -387,6 +390,7 @@ static int open_uinput(void)
 	    ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0 ||
 	    ioctl(fd, UI_SET_RELBIT, REL_X) < 0 ||
 	    ioctl(fd, UI_SET_RELBIT, REL_Y) < 0 ||
+	    ioctl(fd, UI_SET_RELBIT, REL_WHEEL) < 0 ||
 	    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
 		perror("ioctl(<SET_EVBIT>)");
 		goto err;
