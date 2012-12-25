@@ -1,16 +1,13 @@
-ACTION=="add", SUBSYSTEM=="input", DEVPATH=="*/event*", ATTRS{name}=="HID 05a4:9881", GOTO="hama-mce"
+SUBSYSTEM=="input", DEVPATH=="*/event*", ATTRS{name}=="HID 05a4:9881", GOTO="hama-mce"
 
 GOTO="hama-mce-end"
-
 LABEL="hama-mce"
 
-ATTRS{phys}=="*/input0", \
-	SYMLINK+="input/event-hama0", ENV{SYSTEMD_ALIAS}="/dev/input/event-hama0"
-
+# trigger on second input device; that assumes that the first has been
+# created already
 ATTRS{phys}=="*/input1", \
-	SYMLINK+="input/event-hama1", ENV{SYSTEMD_ALIAS}="/dev/input/event-hama1"
-
-MODE="0660", TAG+="systemd", ENV{SYSTEMD_READY}="1"
-
+  TAG+="systemd", ENV{SYSTEMD_READY}="1", \
+  IMPORT{program}="hamaid", \
+  ENV{SYSTEMD_WANTS}="hama-mce-remoted@$env{HAMA_EVENTS}.service"
 
 LABEL="hama-mce-end"

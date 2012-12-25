@@ -1,0 +1,6 @@
+[Unit]
+Description = HAMA MCE remote control daemon
+
+[Service]
+Type=simple
+ExecStart = /usr/sbin/hama-mce-remoted --mode uinput --events %I
