@@ -1,0 +1,26 @@
+From 99f4c114f53fab6490444fabf75232b7f1300362 Mon Sep 17 00:00:00 2001
+From: Enrico Scholz <enrico.scholz@informatik.tu-chemnitz.de>
+Date: Mon, 24 Dec 2012 14:06:12 +0100
+Subject: [PATCH 2/2] hid-quirks: enabled no-autorelease quirk for hama mce
+
+---
+ drivers/hid/usbhid/hid-quirks.c |    3 +++
+ 1 files changed, 3 insertions(+), 0 deletions(-)
+
+diff --git a/drivers/hid/usbhid/hid-quirks.c b/drivers/hid/usbhid/hid-quirks.c
+index 8865fa3..c73f5e4 100644
+--- a/drivers/hid/usbhid/hid-quirks.c
++++ b/drivers/hid/usbhid/hid-quirks.c
+@@ -103,6 +103,9 @@ static const struct hid_blacklist {
+ 	{ USB_VENDOR_ID_SIGMA_MICRO, USB_DEVICE_ID_SIGMA_MICRO_KEYBOARD, HID_QUIRK_NO_INIT_REPORTS },
+ 	{ USB_VENDOR_ID_KYE, USB_DEVICE_ID_KYE_MOUSEPEN_I608X, HID_QUIRK_MULTI_INPUT },
+ 	{ USB_VENDOR_ID_KYE, USB_DEVICE_ID_KYE_EASYPEN_M610X, HID_QUIRK_MULTI_INPUT },
++
++	{ 0x05a4, 0x9881, HID_QUIRK_NO_AUTORELEASE }, /* HAMA MCE remote control */
++
+ 	{ 0, 0 }
+ };
+ 
+-- 
+1.7.1
+

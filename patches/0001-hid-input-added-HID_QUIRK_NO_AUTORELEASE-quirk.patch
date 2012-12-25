@@ -1,0 +1,93 @@
+From 920b4ef00aab3fe44d270a2b8e9578f77ed05244 Mon Sep 17 00:00:00 2001
+From: Enrico Scholz <enrico.scholz@informatik.tu-chemnitz.de>
+Date: Mon, 24 Dec 2012 13:21:09 +0100
+Subject: [PATCH 1/2] hid-input: added HID_QUIRK_NO_AUTORELEASE quirk
+
+Some ir remote controls (e.g. Hama MCE) do not have an autorepeat
+feature but generate only single press-/release events.  E.g. holding
+the volume-up key for some seconds generates
+
+  # cat /sys/kernel/debug/hid/*0003/events
+  report (size 5) (numbered) =  02 10 00 00 55
+  ...
+  Consumer.00e9 = 1
+
+  <... no events for 3 seconds ...>
+
+  report (size 5) (numbered) =  02 00 00 00 55
+  ...
+  Consumer.00e9 = 0
+
+Without the quirk, only a single
+
+  type 4 (Misc), code 4 (ScanCode), value c00e9
+  type 1 (Key), code 115 (VolumeUp), value 1
+  type 1 (Key), code 115 (VolumeUp), value 0
+  -------------- Report Sync ------------
+
+event will be reported in /dev/input/eventX when the key is pressed and
+nothing on release. Changing volume based on input events will require
+to press the volume key repeatedly which violates somehow user
+expectations.
+
+By applying this quirk, EV_KEY events with value 1 will be generated
+when pressing the key, and with value 0 when releasing the key.  Because
+autorepeat is wanted in such situations, the quirk enables EV_REP for
+HID_UP_CONSUMER.
+
+For mentioned Hama MCE remote control, I apply a
+
+ |  { 0x05a4, 0x9881, HID_QUIRK_NO_AUTORELEASE }, /* HAMA MCE remote control */
+
+quirk in drivers/hid/usbhid/hid-quirks.c.
+
+Perhaps, it might be a good choice to enable effects of this quirk for
+every HID_UP_CONSUMER. But I do not have an overview about all the
+possible devices and made the quirk an opt-in but not an opt-out to
+avoid regressions.
+
+Signed-off-by: Enrico Scholz <enrico.scholz@informatik.tu-chemnitz.de>
+---
+ drivers/hid/hid-input.c |    6 +++++-
+ include/linux/hid.h     |    1 +
+ 2 files changed, 6 insertions(+), 1 deletions(-)
+
+diff --git a/drivers/hid/hid-input.c b/drivers/hid/hid-input.c
+index 811bfad..7b18e40 100644
+--- a/drivers/hid/hid-input.c
++++ b/drivers/hid/hid-input.c
+@@ -665,6 +665,9 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
+ 		break;
+ 
+ 	case HID_UP_CONSUMER:	/* USB HUT v1.12, pages 75-84 */
++		if (device->quirks & HID_QUIRK_NO_AUTORELEASE)
++			set_bit(EV_REP, input->evbit);
++
+ 		switch (usage->hid & HID_USAGE) {
+ 		case 0x000: goto ignore;
+ 		case 0x030: map_key_clear(KEY_POWER);		break;
+@@ -1037,7 +1040,8 @@ void hidinput_hid_event(struct hid_device *hid, struct hid_field *field, struct
+ 
+ 	input_event(input, usage->type, usage->code, value);
+ 
+-	if ((field->flags & HID_MAIN_ITEM_RELATIVE) && (usage->type == EV_KEY))
++	if ((field->flags & HID_MAIN_ITEM_RELATIVE) && (usage->type == EV_KEY) &&
++	    !(*quirks & HID_QUIRK_NO_AUTORELEASE))
+ 		input_event(input, usage->type, usage->code, 0);
+ }
+ 
+diff --git a/include/linux/hid.h b/include/linux/hid.h
+index 42970de..d343119 100644
+--- a/include/linux/hid.h
++++ b/include/linux/hid.h
+@@ -318,6 +318,7 @@ struct hid_item {
+ #define HID_QUIRK_BADPAD			0x00000020
+ #define HID_QUIRK_MULTI_INPUT			0x00000040
+ #define HID_QUIRK_HIDINPUT_FORCE		0x00000080
++#define HID_QUIRK_NO_AUTORELEASE		0x00000100
+ #define HID_QUIRK_SKIP_OUTPUT_REPORTS		0x00010000
+ #define HID_QUIRK_FULLSPEED_INTERVAL		0x10000000
+ #define HID_QUIRK_NO_INIT_REPORTS		0x20000000
+-- 
+1.7.1
+
