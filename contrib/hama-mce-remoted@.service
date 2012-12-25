@@ -3,4 +3,5 @@ Description = HAMA MCE remote control daemon
 
 [Service]
 Type=simple
+ExecStartPre = -/sbin/modprobe -qab uinput
 ExecStart = /usr/sbin/hama-mce-remoted --events %I
