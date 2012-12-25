@@ -84,64 +84,64 @@ struct input_state {
 	{ _mask, _key, _code, # _code }
 
 static struct key_definition const	KEY_DEFS[] = {
-	D( 0, KEY_HOMEPAGE,          KEY_HOMEPAGE ),
-	D( 0, KEY_SLEEP,             KEY_SLEEP ),
+	D( 0, KEY_HOMEPAGE,		KEY_HOMEPAGE ),
+	D( 0, KEY_SLEEP,		KEY_SLEEP ),
 
-	D( M(0,1,1,0,0), 20,         KEY_YELLOW ),
-	D( M(0,1,0,0,0), 50,         KEY_BLUE ),
-	D( M(0,1,0,0,0), 23,         KEY_GREEN ),
-	D( M(0,1,0,0,0), 18,         KEY_RED ),
+	D( M(0,1,1,0,0), 20,		KEY_YELLOW ),
+	D( M(0,1,0,0,0), 50,		KEY_BLUE ),
+	D( M(0,1,0,0,0), 23,		KEY_GREEN ),
+	D( M(0,1,0,0,0), 18,		KEY_RED ),
 
-	D( M(0,1,0,0,0), 24,         KEY_HOMEPAGE ),
-	D( M(0,1,0,0,0), 34,         KEY_PROGRAM ),
-	D( M(0,1,0,0,0), 20,         KEY_SCREEN ),
-	D( M(0,1,1,0,0), 50,         KEY_DVD ),
+	D( M(0,1,0,0,0), 24,		KEY_HOMEPAGE ),
+	D( M(0,1,0,0,0), 34,		KEY_PROGRAM ),
+	D( M(0,1,0,0,0), 20,		KEY_SCREEN ),
+	D( M(0,1,1,0,0), 50,		KEY_DVD ),
 
-	D( M(0,1,1,0,0), 48,         KEY_REWIND ),
-	D( M(0,1,1,0,0), 33,	    KEY_FASTFORWARD ),
-	D( 0, KEY_PREVIOUSSONG,      KEY_PREVIOUSSONG ),
-	D( 0, KEY_NEXTSONG,          KEY_NEXTSONG ),
+	D( M(0,1,1,0,0), 48,		KEY_REWIND ),
+	D( M(0,1,1,0,0), 33,		KEY_FASTFORWARD ),
+	D( 0, KEY_PREVIOUSSONG,		KEY_PREVIOUSSONG ),
+	D( 0, KEY_NEXTSONG,		KEY_NEXTSONG ),
 
-	D( 0, KEY_PLAYPAUSE,         KEY_PLAYPAUSE ),
+	D( 0, KEY_PLAYPAUSE,		KEY_PLAYPAUSE ),
 
-	D( 0, KEY_STOPCD,            KEY_STOPCD ),
-	D( M(0,1,0,0,0), 19,         KEY_RECORD ),
+	D( 0, KEY_STOPCD,		KEY_STOPCD ),
+	D( M(0,1,0,0,0), 19,		KEY_RECORD ),
 
-	D( 0, KEY_BACKSPACE,         KEY_BACKSPACE ),
-	D( 0, BTN_RIGHT,		    KEY_INFO ),
+	D( 0, KEY_BACKSPACE,		KEY_BACKSPACE ),
+	D( 0, BTN_RIGHT,		KEY_INFO ),
 
-	D( 0, KEY_LEFT,              KEY_LEFT ),
-	D( 0, KEY_RIGHT,             KEY_RIGHT ),
-	D( 0, KEY_UP,                KEY_UP ),
-	D( 0, KEY_DOWN,              KEY_DOWN ),
+	D( 0, KEY_LEFT,			KEY_LEFT ),
+	D( 0, KEY_RIGHT,		KEY_RIGHT ),
+	D( 0, KEY_UP,			KEY_UP ),
+	D( 0, KEY_DOWN,			KEY_DOWN ),
 
-	D( 0, KEY_ENTER,             KEY_ENTER ),
-	D( 0, BTN_LEFT,              BTN_LEFT ),
-/*	D( 0, BTN_RIGHT,             BTN_RIGHT ), */
+	D( 0, KEY_ENTER,		KEY_ENTER ),
+	D( 0, BTN_LEFT,			BTN_LEFT ),
+/*	D( 0, BTN_RIGHT,		BTN_RIGHT ), */
 
-	D( 0, KEY_VOLUMEUP,          KEY_VOLUMEUP ),
-	D( 0, KEY_VOLUMEDOWN,        KEY_VOLUMEDOWN ),
-	D( 0, KEY_MUTE,              KEY_MUTE ),
+	D( 0, KEY_VOLUMEUP,		KEY_VOLUMEUP ),
+	D( 0, KEY_VOLUMEDOWN,		KEY_VOLUMEDOWN ),
+	D( 0, KEY_MUTE,			KEY_MUTE ),
 
-	D( 0, KEY_PAGEUP,            KEY_CHANNELUP ),
-	D( 0, KEY_PAGEDOWN,          KEY_CHANNELDOWN ),
+	D( 0, KEY_PAGEUP,		KEY_CHANNELUP ),
+	D( 0, KEY_PAGEDOWN,		KEY_CHANNELDOWN ),
 
-	D( M(1,0,0,1,0), 28,         BTN_START ),
-	D( 0, KEY_KP1,               KEY_KP1 ),
-	D( 0, KEY_KP2,               KEY_KP2 ),
-	D( 0, KEY_KP3,               KEY_KP3 ),
-	D( 0, KEY_KP4,               KEY_KP4 ),
-	D( 0, KEY_KP5,               KEY_KP5 ),
-	D( 0, KEY_KP6,               KEY_KP6 ),
-	D( 0, KEY_KP7,               KEY_KP7 ),
-	D( 0, KEY_KP8,               KEY_KP8 ),
-	D( 0, KEY_KP9,               KEY_KP9 ),
-	D( 0, KEY_KP0,               KEY_KP0 ),
+	D( M(1,0,0,1,0), 28,		BTN_START ),
+	D( 0, KEY_KP1,			KEY_KP1 ),
+	D( 0, KEY_KP2,			KEY_KP2 ),
+	D( 0, KEY_KP3,			KEY_KP3 ),
+	D( 0, KEY_KP4,			KEY_KP4 ),
+	D( 0, KEY_KP5,			KEY_KP5 ),
+	D( 0, KEY_KP6,			KEY_KP6 ),
+	D( 0, KEY_KP7,			KEY_KP7 ),
+	D( 0, KEY_KP8,			KEY_KP8 ),
+	D( 0, KEY_KP9,			KEY_KP9 ),
+	D( 0, KEY_KP0,			KEY_KP0 ),
 
-	D( 0, KEY_KPASTERISK,        KEY_KPASTERISK ),
-	D( M(0,0,0,0,1), '#',        KEY_KPPLUSMINUS ),
-	D( M(0,0,0,1,0), 62,         KEY_CLOSE ),
-	D( 0, KEY_ESC,               KEY_ESC ),
+	D( 0, KEY_KPASTERISK,		KEY_KPASTERISK ),
+	D( M(0,0,0,0,1), '#',		KEY_KPPLUSMINUS ),
+	D( M(0,0,0,1,0), 62,		KEY_CLOSE ),
+	D( 0, KEY_ESC,			KEY_ESC ),
 };
 
 #undef D
@@ -300,7 +300,8 @@ static void handle_input(struct input_state *st, int out_fd)
 		break;
 
 	default:	;
-		printf("%02x\n", ev.type);
+		fprintf(stderr, SD_WARNING "unsupported event type %02x\n",
+			ev.type);
 	}
 
 
@@ -332,7 +333,6 @@ static void handle_input(struct input_state *st, int out_fd)
 					fill_keyname(buf + n, &st->ev, code);
 					strcat(buf, "\n");
 					n = strlen(buf);
-
 					l = send(out_fd, buf, n, 0);
 				}
 				break;
@@ -361,13 +361,14 @@ static void handle_input(struct input_state *st, int out_fd)
 			if ((size_t)l != n)
 				exit(2);
 		} else
-			printf("M(%u,%u,%u,%u,%u) %d %d %ld\n",
-			       !!(st->mode & MODE_META),
-			       !!(st->mode & MODE_CTRL),
-			       !!(st->mode & MODE_SHIFT),
-			       !!(st->mode & MODE_ALT),
-			       !!st->is_alt,
-			       st->key, ev.value, (st->mode & MODE_NUMLOCK));
+			fprintf(stderr,
+				SD_WARNING "unknown code M(%u,%u,%u,%u,%u) %d %d %ld\n",
+				!!(st->mode & MODE_META),
+				!!(st->mode & MODE_CTRL),
+				!!(st->mode & MODE_SHIFT),
+				!!(st->mode & MODE_ALT),
+				!!st->is_alt,
+				st->key, ev.value, (st->mode & MODE_NUMLOCK));
 
 		st->key = 0;
 	}
