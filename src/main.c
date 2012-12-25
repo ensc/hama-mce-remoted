@@ -21,6 +21,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <getopt.h>
 #include <sysexits.h>
 
 #include <unistd.h>
@@ -31,11 +32,20 @@
 #include <sys/un.h>
 
 #include <linux/input.h>
+#include <linux/uinput.h>
 #include <systemd/sd-daemon.h>
 
 #define ARRAY_SIZE(_a) (sizeof(_a) / sizeof((_a)[0]))
 
-static const enum { OUT_LIRC, OUT_DEV }		OUT_MODE = OUT_LIRC;
+static struct option const	CMDLINE_OPTIONS[] = {
+	{ "mode",	 required_argument, NULL, 'm' },
+	{ "socket",      required_argument, NULL, 's' },
+	{ "systemd",     no_argument,       NULL, 'S' },
+	{ "events",      required_argument, NULL, 'e' },
+	{ }
+};
+
+static enum { OUT_LIRC, OUT_DEV, OUT_UINPUT }		OUT_MODE = OUT_LIRC;
 
 enum {
 	MODE_META	=  (1 << 0),
@@ -312,7 +322,8 @@ static void handle_input(struct input_state *st, int out_fd)
 			ssize_t	l = 0;
 			size_t	n = 0;
 
-			if (OUT_MODE == OUT_LIRC) {
+			switch (OUT_MODE) {
+			case OUT_LIRC:
 				if (st->ev.value > 0) {
 					char		buf[128];
 					unsigned int	code = (st->ev.type << 16) | (st->ev.code << 0);
@@ -324,9 +335,23 @@ static void handle_input(struct input_state *st, int out_fd)
 
 					l = send(out_fd, buf, n, 0);
 				}
-			} else {
+				break;
+
+			case OUT_UINPUT:
+			case OUT_DEV:
 				n = sizeof st->ev;
 				l = write(out_fd, &st->ev, n);
+
+				if (n == l && OUT_MODE == OUT_UINPUT) {
+					struct input_event	syn_ev = {
+						.type	=  EV_SYN,
+						.code	=  SYN_REPORT,
+					};
+
+					n = sizeof syn_ev;
+					l = write(out_fd, &syn_ev, n);
+				}
+				break;
 			}
 
 			if (l == 0 && n != 0)
@@ -374,43 +399,204 @@ static int accept_connection(int s)
 	return res;
 }
 
+static int open_uinput(void)
+{
+	struct uinput_user_dev const	dev_info = {
+		.name	= "HAMA emulated device",
+		.id	= {
+			.bustype	=  BUS_VIRTUAL,
+			.vendor		=  0,
+			.product	=  0,
+			.version	=  0,
+		},
+	};
+
+	int			fd = open("/dev/uinput", O_WRONLY);
+	size_t			i;
+
+	if (fd < 0) {
+		perror("open(/dev/uinput");
+		return -1;
+	}
+
+	if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) {
+		perror("ioctl(<SET_EVBIT>)");
+		goto err;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(KEY_DEFS); ++i) {
+		if (ioctl(fd, UI_SET_KEYBIT, KEY_DEFS[i].code) < 0) {
+			perror("ioctl(<SET_KEYBIT>)");
+			goto err;
+		}
+	}
+
+	if (write(fd, &dev_info, sizeof dev_info) != sizeof dev_info) {
+		fprintf(stderr, "failed to set uinput dev_info: %m");
+		goto err;
+	}
+
+	if (ioctl(fd, UI_DEV_CREATE) < 0) {
+		perror("ioctl(<DEV_CREATE>)");
+		goto err;
+	}
+
+	return fd;
+
+err:
+	close(fd);
+	return -1;
+}
+
+struct event_file {
+	char const	*name;
+	char		buf[sizeof "/dev/input/event" + 3 * sizeof(int)];
+};
+
+static int fill_event_file(struct event_file *kbd,
+			   struct event_file *mouse,
+			   char const *opt)
+{
+	unsigned int	id_kbd;
+	unsigned int	id_mouse;
+	char		*err_ptr;
+
+	id_kbd = strtoul(opt, &err_ptr, 10);
+	if (*err_ptr != ' ')
+		return EX_USAGE;
+
+	opt = err_ptr+1;
+	id_mouse = strtoul(opt, &err_ptr, 10);
+	if (*err_ptr != '\0')
+		return EX_USAGE;
+
+	sprintf(kbd->buf, "/dev/input/event%u", id_kbd);
+	sprintf(mouse->buf, "/dev/input/event%u", id_mouse);
+
+	kbd->name = kbd->buf;
+	mouse->name = mouse->buf;
+
+	return 0;
+}
+
 int main(int argc, char *argv[])
 {
 	struct input_state	in[2] = {};
 	int			fd_out;
 	unsigned long		tmp;
+	char const		*socket_path = NULL;
+	bool			use_systemd = false;
+	struct event_file	event_kbd = { .name = NULL };
+	struct event_file	event_mouse = { .name = NULL };
+	int			rc;
 
-	if (argc < 3) {
+	for (;;) {
+		int	c;
+
+		c = getopt_long(argc, argv, "m:s:S", CMDLINE_OPTIONS, NULL);
+		if (c == -1)
+			break;
+
+		switch (c) {
+		case 'm':
+			if (strcasecmp(optarg, "dev") == 0)
+				OUT_MODE = OUT_DEV;
+			else if (strcasecmp(optarg, "uinput") == 0)
+				OUT_MODE = OUT_UINPUT;
+			else if (strcasecmp(optarg, "lirc") == 0)
+				OUT_MODE = OUT_LIRC;
+			else {
+				fprintf(stderr, "unknown mode '%s'\n",
+					optarg);
+				return EX_USAGE;
+			}
+			break;
+
+		case 's':
+			socket_path = optarg;
+			break;
+
+		case 'S':
+			use_systemd = true;
+			break;
+
+		case 'e':
+			rc = fill_event_file(&event_kbd, &event_mouse,
+					     optarg);
+			if (rc)
+				return rc;
+			break;
+
+		default:
+			fprintf(stderr, "unknown option\n");
+			return EX_USAGE;
+		}
+	}
+
+	if (event_kbd.name != NULL) {
+		;			/* noop */
+	} else if (argc < optind + 2) {
 		fprintf(stderr, "missing parameters\n");
+		return EX_USAGE;
+	} else {
+		event_kbd.name   = argv[optind + 0];
+		event_mouse.name = argv[optind + 1];
+	}
+
+	if (socket_path && use_systemd) {
+		fprintf(stderr, "both socket path specified and systemd enabled\n");
 		return EX_USAGE;
 	}
 
-	in[0].fd = open(argv[1], O_RDONLY | O_NONBLOCK);
-	in[1].fd = open(argv[2], O_RDONLY | O_NONBLOCK);
-
-	if (argc < 4 && sd_listen_fds(0) > 0) {
-		fd_out = accept_connection(SD_LISTEN_FDS_START + 0);
-	} else if (argc < 4) {
-		fprintf(stderr, "missing lirc socket\n");
+	if (!socket_path && !use_systemd && OUT_MODE != OUT_UINPUT) {
+		fprintf(stderr, "neither socket path specified, nor systemd enabled\n");
 		return EX_USAGE;
-	} else {
+	}
+
+	if (use_systemd && OUT_MODE == OUT_UINPUT) {
+		fprintf(stderr, "can not use uinput and systemd mode together\n");
+		return EX_USAGE;
+	}
+
+	in[0].fd = open(event_kbd.name,   O_RDONLY | O_NONBLOCK);
+	in[1].fd = open(event_mouse.name, O_RDONLY | O_NONBLOCK);
+
+	if (!use_systemd) {
 		fd_out = -1;
+	} else {
+		if (sd_listen_fds(0) <= 0) {
+			fprintf(stderr, "systemd not correctly initialized\n");
+			return EX_USAGE;
+		}
+
+		fd_out = accept_connection(SD_LISTEN_FDS_START + 0);
 	}
 
 	if (fd_out >= 0)
 		;			/* noop */
-	else if (OUT_MODE == OUT_LIRC) {
-		struct sockaddr_un	addr_out = {
-			.sun_family	=  AF_UNIX,
-		};
-		int		s = socket(AF_UNIX, SOCK_STREAM, 0);
+	else {
+		switch (OUT_MODE) {
+		case OUT_LIRC: {
+			struct sockaddr_un	addr_out = {
+				.sun_family	=  AF_UNIX,
+			};
+			int		s = socket(AF_UNIX, SOCK_STREAM, 0);
 
-		strncpy(addr_out.sun_path, argv[3], sizeof addr_out.sun_path);
-		bind(s, (void *)&addr_out, sizeof addr_out);
+			strncpy(addr_out.sun_path, socket_path, sizeof addr_out.sun_path);
+			bind(s, (void *)&addr_out, sizeof addr_out);
 
-		fd_out = accept_connection(s);
-	} else {
-		fd_out = open(argv[3], O_WRONLY);
+			fd_out = accept_connection(s);
+			break;
+		}
+
+		case OUT_DEV:
+			fd_out = open(socket_path, O_WRONLY);
+			break;
+
+		case OUT_UINPUT:
+			fd_out = open_uinput();
+			break;
+		}
 	}
 
 	if (fd_out < 0)
