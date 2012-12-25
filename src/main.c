@@ -22,6 +22,7 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include <getopt.h>
+#include <errno.h>
 #include <sysexits.h>
 
 #include <unistd.h>
@@ -64,8 +65,9 @@ struct input_state {
 	unsigned long		mode;
 	signed int		key;
 	bool			is_alt;
+	bool			is_raw;
 
-	struct input_event	ev;
+	struct input_event	ev[3];
 };
 
 #define M(_meta,_ctrl,_shift,_alt,_num) \
@@ -149,14 +151,45 @@ static bool fill_key(struct input_event *ev, unsigned long mask, unsigned int ke
 	for (i = 0; i < ARRAY_SIZE(KEY_DEFS); ++i) {
 		if (KEY_DEFS[i].mask == mask &&
 		    KEY_DEFS[i].key  == key) {
-			ev->type = EV_KEY;
-			ev->code = KEY_DEFS[i].code;
+			ev[0].type  = EV_MSC;
+			ev[0].code  = MSC_SCAN;
+			ev[0].value = i;
+
+			ev[1].type  = EV_KEY;
+			ev[1].code  = KEY_DEFS[i].code;
 
 			return true;
 		}
 	}
 
 	return false;
+}
+
+static bool send_events(int fd, struct input_event const events[], 
+			size_t num_events)
+{
+	struct input_event const	*ev = &events[0];
+
+	while (num_events > 0) {
+		ssize_t	l = write(fd, ev, sizeof *ev);
+
+		if (l < 0 && errno == EINTR) {
+			continue;
+		} else if (l < 0) {
+			perror("write(<uinput>)");
+			break;
+		} else if ((size_t)l != sizeof *ev) {
+			fprintf(stderr,
+				SD_ERR "wrote unexpected amount of data: %zd vs. %zu\n",
+				l, sizeof *ev);
+			break;
+		} else {
+			++ev;
+			--num_events;
+		}
+	}
+
+	return num_events == 0;
 }
 
 static void handle_input(struct input_state *st, int out_fd)
@@ -182,6 +215,8 @@ static void handle_input(struct input_state *st, int out_fd)
 
 	switch (ev.type) {
 	case EV_KEY:
+		st->is_raw = false;
+
 		switch (ev.code) {
 		case KEY_LEFTMETA:
 		case KEY_RIGHTMETA:
@@ -259,12 +294,21 @@ static void handle_input(struct input_state *st, int out_fd)
 		break;
 
 	case EV_SYN:
+		if (st->is_raw &&
+		    !send_events(out_fd, &ev, 1))
+			exit(1);
+		st->is_raw = false;
+
 		break;
 
 	case EV_MSC:
 		break;
 
 	case EV_REL:
+		if (!send_events(out_fd, &ev, 1))
+			exit(1);
+		st->is_raw = true;
+
 		break;
 
 	default:	;
@@ -276,11 +320,18 @@ static void handle_input(struct input_state *st, int out_fd)
 	if (do_submit) {
 		int		found;
 
-		st->ev.time  = ev.time;
-		st->ev.value = ev.value;
+		st->ev[0].time  = ev.time;
+
+		st->ev[1].time  = ev.time;
+		st->ev[1].value = ev.value;
+
+		st->ev[2].time  = ev.time;
+		st->ev[2].type  = EV_SYN;
+		st->ev[2].code  = SYN_REPORT;
+		st->ev[2].value = 0;
 
 		if (ev.value)
-			found = fill_key(&st->ev,
+			found = fill_key(st->ev,
 					 st->mode |
 					 (st->is_alt ? MODE_NUMALT : 0),
 					 st->key);
@@ -288,25 +339,12 @@ static void handle_input(struct input_state *st, int out_fd)
 			found = true;
 
 		if (found) {
-			ssize_t		l = 0;
-			size_t const	n = sizeof st->ev;
+			bool		send_scancode = st->ev[1].value == 1;
 
-			l = write(out_fd, &st->ev, n);
-			if (n == (size_t)l) {
-				struct input_event	syn_ev = {
-					.type	=  EV_SYN,
-					.code	=  SYN_REPORT,
-				};
-
-				l = write(out_fd, &syn_ev, n);
-			}
-
-			if (l == 0 && n != 0)
-				exit(0);
-			if (l < 0)
+			if (!send_events(out_fd,
+					 send_scancode ? &st->ev[0] : &st->ev[1],
+					 send_scancode ? 3 : 2))
 				exit(1);
-			if ((size_t)l != n)
-				exit(2);
 		} else
 			fprintf(stderr,
 				SD_WARNING "unknown code M(%u,%u,%u,%u,%u) %d %d %ld\n",
@@ -342,7 +380,12 @@ static int open_uinput(void)
 		return -1;
 	}
 
-	if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0) {
+	if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
+	    ioctl(fd, UI_SET_EVBIT, EV_REL) < 0 ||
+	    ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0 ||
+	    ioctl(fd, UI_SET_RELBIT, REL_X) < 0 ||
+	    ioctl(fd, UI_SET_RELBIT, REL_Y) < 0 ||
+	    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
 		perror("ioctl(<SET_EVBIT>)");
 		goto err;
 	}
