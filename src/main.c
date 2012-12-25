@@ -31,7 +31,7 @@
 #include <sys/un.h>
 
 #include <linux/input.h>
-#include "systemd/sd-daemon.h"
+#include <systemd/sd-daemon.h>
 
 #define ARRAY_SIZE(_a) (sizeof(_a) / sizeof((_a)[0]))
 
