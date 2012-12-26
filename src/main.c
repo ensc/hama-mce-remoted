@@ -41,6 +41,10 @@
 
 #define ARRAY_SIZE(_a) (sizeof(_a) / sizeof((_a)[0]))
 
+#define err(_fmt, ...)	fprintf(stderr, SD_ERR _fmt, ## __VA_ARGS__)
+#define warn(_fmt, ...)	fprintf(stderr, SD_WARNING _fmt, ## __VA_ARGS__)
+#define dbg(_fmt, ...)	fprintf(stderr, SD_DEBUG _fmt, ## __VA_ARGS__)
+
 static struct option const	CMDLINE_OPTIONS[] = {
 	{ "keymap",      required_argument, NULL, 'k' },
 	{ }
@@ -188,12 +192,11 @@ static bool send_events(int fd, struct input_event const events[],
 		if (l < 0 && errno == EINTR) {
 			continue;
 		} else if (l < 0) {
-			perror("write(<uinput>)");
+			err("write(<uinput>): %m");
 			break;
 		} else if ((size_t)l != sizeof *ev) {
-			fprintf(stderr,
-				SD_ERR "wrote unexpected amount of data: %zd vs. %zu\n",
-				l, sizeof *ev);
+			err("wrote unexpected amount of data: %zd vs. %zu\n",
+			    l, sizeof *ev);
 			break;
 		} else {
 			++ev;
@@ -216,7 +219,7 @@ static bool handle_input(struct input_state *st, int out_fd)
 		return false;
 
 	if (l < 0) {
-		perror("read()");
+		err("read(<event>): %m");
 		exit(1);
 	}
 
@@ -325,8 +328,8 @@ static bool handle_input(struct input_state *st, int out_fd)
 		break;
 
 	default:	;
-		fprintf(stderr, SD_WARNING "unsupported event type %02x\n",
-			ev.type);
+		warn("unsupported event type %02x\n", ev.type);
+		break;
 	}
 
 
@@ -359,14 +362,13 @@ static bool handle_input(struct input_state *st, int out_fd)
 					 send_scancode ? 3 : 2))
 				exit(1);
 		} else
-			fprintf(stderr,
-				SD_WARNING "unknown code M(%u,%u,%u,%u,%u) %d %d %ld\n",
-				!!(st->mode & MODE_META),
-				!!(st->mode & MODE_CTRL),
-				!!(st->mode & MODE_SHIFT),
-				!!(st->mode & MODE_ALT),
-				!!st->is_alt,
-				st->key, ev.value, (st->mode & MODE_NUMLOCK));
+			warn("unknown code M(%u,%u,%u,%u,%u) %d %d %ld\n",
+			     !!(st->mode & MODE_META),
+			     !!(st->mode & MODE_CTRL),
+			     !!(st->mode & MODE_SHIFT),
+			     !!(st->mode & MODE_ALT),
+			     !!st->is_alt,
+			     st->key, ev.value, (st->mode & MODE_NUMLOCK));
 
 		st->key = 0;
 	}
@@ -387,19 +389,19 @@ static bool open_input(struct input_state *st, char const *filename)
 	};
 
 	if (fd < 0) {
-		perror("open(<event>)");
+		err("open(<event>): %m");
 		return false;
 	}
 
 	if (ioctl(fd, EVIOCGRAB, &ONE) < 0 ||
 	    ioctl(fd, EVIOCGBIT(0, sizeof events_mask), events_mask) < 0) {
-		perror("ioctl(<GRAB/NAME>)");
+		err("ioctl(<GRAB/NAME>): %m");
 		close(fd);
 		return false;
 	}
 
 	if (ioctl(fd, EVIOCSREP, rep) < 0) {
-		fprintf(stderr, "failed to set repeat rate: %m");
+		warn("failed to set repeat rate: %m");
 		/* no error; continue */
 	}
 
@@ -431,7 +433,7 @@ static int open_uinput(struct input_state *st)
 	int			fd = open("/dev/uinput", O_WRONLY);
 
 	if (fd < 0) {
-		perror("open(/dev/uinput");
+		err("open(/dev/uinput): %m");
 		return -1;
 	}
 
@@ -442,7 +444,7 @@ static int open_uinput(struct input_state *st)
 		if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
 		    ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0 ||
 		    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
-			perror("ioctl(<SET_EVBIT>)");
+			err("ioctl(<SET_EVBIT>): %m");
 			goto err;
 		}
 		break;
@@ -457,7 +459,7 @@ static int open_uinput(struct input_state *st)
 		    ioctl(fd, UI_SET_RELBIT, REL_Y) < 0 ||
 		    ioctl(fd, UI_SET_RELBIT, REL_WHEEL) < 0 ||
 		    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
-			perror("ioctl(<SET_EVBIT>)");
+			err("ioctl(<SET_EVBIT>): %m");
 			goto err;
 		}
 		break;
@@ -465,18 +467,18 @@ static int open_uinput(struct input_state *st)
 
 	for (i = 0; i < ARRAY_SIZE(KEY_DEFS); ++i) {
 		if (ioctl(fd, UI_SET_KEYBIT, KEY_DEFS[i].code) < 0) {
-			perror("ioctl(<SET_KEYBIT>)");
+			err("ioctl(<SET_KEYBIT>): %m");
 			goto err;
 		}
 	}
 
 	if (write(fd, &dev_info, sizeof dev_info) != sizeof dev_info) {
-		fprintf(stderr, "failed to set uinput dev_info: %m");
+		err("failed to set uinput dev_info: %m");
 		goto err;
 	}
 
 	if (ioctl(fd, UI_DEV_CREATE) < 0) {
-		perror("ioctl(<DEV_CREATE>)");
+		err("ioctl(<DEV_CREATE>): %m");
 		goto err;
 	}
 
@@ -494,13 +496,13 @@ static int read_keymap(char const *fname)
 	int	rc = EX_OK;
 
 	if (pipe(fds) < 0) {
-		perror(SD_ERR "pipe()");
+		err("pipe(): %m");
 		return EX_OSERR;
 	}
 
 	pid = fork();
 	if (pid < 0) {
-		perror(SD_ERR "fork(<keymap-parser)");
+		err("fork(<keymap-parser): %m");
 		close(fds[0]);
 		close(fds[1]);
 		return EX_OSERR;
@@ -510,7 +512,7 @@ static int read_keymap(char const *fname)
 		char	buf[3 * sizeof(size_t) + 1];
 
 		if (dup2(fds[1], STDOUT_FILENO) < 0) {
-			perror(SD_ERR "dup2(<keymap-parser>)");
+			err("dup2(<keymap-parser>): %m");
 			_exit(EX_OSERR);
 		}
 
@@ -522,7 +524,7 @@ static int read_keymap(char const *fname)
 		execlp("hama-keymap-parser",
 		       "hama-keymap-parser", fname, buf,
 		       (char *)NULL);
-		perror(SD_ERR "execlp(hama-keymap-parser)");
+		err("execlp(hama-keymap-parser): %m");
 		_exit(EX_OSERR);
 	} else {
 		struct keymap_data_rpc	info;
@@ -536,25 +538,23 @@ static int read_keymap(char const *fname)
 			if (l == 0) {
 				break;
 			} else if (l < 0) {
-				perror(SD_ERR "read(<keymap-parser>)");
+				err( "read(<keymap-parser>): %m");
 				rc = EX_OSERR;
 				break;
 			} else if ((size_t)l != sizeof info) {
-				fprintf(stderr, SD_ERR
-					"incomplete data read (%zd vs. %zu)\n",
-					l, sizeof info);
+				err("incomplete data read (%zd vs. %zu)\n",
+				    l, sizeof info);
 				rc = EX_OSERR;
 				break;
 			} else if (info.scancode >= ARRAY_SIZE(KEY_DEFS) ||
 				   info.keyid >= KEY_MAX) {
-				fprintf(stderr, SD_ERR
-					"inconsistent data (%u, %04x)\n",
-					info.scancode, info.keyid);
+				err("inconsistent data (%u, %04x)\n",
+				    info.scancode, info.keyid);
 				rc = EX_OSERR;
 				break;
 			} else {
-				fprintf(stderr, SD_DEBUG "mapping %u to %04x\n",
-					info.scancode, info.keyid);
+				dbg("mapping %u to %04x\n", info.scancode,
+				    info.keyid);
 				KEY_DEFS[info.scancode].code = info.keyid;
 			}
 		}
@@ -562,12 +562,11 @@ static int read_keymap(char const *fname)
 		close(fds[0]);
 
 		if (waitpid(pid, &status, 0) < 0) {
-			perror(SD_ERR "waitpid(<keymap-parser>)");
+			err("waitpid(<keymap-parser>): %m");
 			if (rc == EX_OK)
 				rc = EX_OSERR;
 		} else if (!WIFEXITED(status) || WEXITSTATUS(status) != EX_OK) {
-			fprintf(stderr, SD_ERR
-				"keymap parser exited with %x\n", status);
+			err("keymap parser exited with %x\n", status);
 			if (rc != EX_OK)
 				;	/* noop */
 			else if (WIFEXITED(status))
