@@ -5,4 +5,4 @@ Description = HAMA MCE remote control daemon
 Type=simple
 EnvironmentFile = -/etc/sysconfig/hama-mce-remoted
 ExecStartPre = -/sbin/modprobe -qab uinput
-ExecStart = /usr/sbin/hama-mce-remoted --events %I $HAMA_MCE_OPTS
+ExecStart = /usr/sbin/hama-mce-remoted $HAMA_MCE_OPTS %I

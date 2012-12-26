@@ -40,7 +40,6 @@
 #define ARRAY_SIZE(_a) (sizeof(_a) / sizeof((_a)[0]))
 
 static struct option const	CMDLINE_OPTIONS[] = {
-	{ "events",      required_argument, NULL, 'e' },
 	{ "keymap",      required_argument, NULL, 'k' },
 	{ }
 };
@@ -63,13 +62,14 @@ struct key_definition {
 };
 
 struct input_state {
-	int			fd;
-	unsigned long		mode;
-	signed int		key;
-	bool			is_alt;
-	bool			is_raw;
+	int				fd;
+	enum { tpKBD, tpMOUSE }	type;
+	unsigned long			mode;
+	signed int			key;
+	bool				is_alt;
+	bool				is_raw;
 
-	struct input_event	ev[3];
+	struct input_event		ev[3];
 };
 
 #define M(_meta,_ctrl,_shift,_alt,_num) \
@@ -146,6 +146,14 @@ static struct key_definition 		KEY_DEFS[] = {
 #undef D
 #undef M
 
+inline static bool test_bit(unsigned int bit, unsigned long const mask[])
+{
+	unsigned long	m = mask[bit / (sizeof mask[0] * 8)];
+	unsigned int	i = bit % (sizeof mask[0] * 8);
+
+	return (m & (1u << i)) != 0u;
+}
+
 static bool fill_key(struct input_event *ev, unsigned long mask, unsigned int key)
 {
 	size_t		i;
@@ -194,7 +202,7 @@ static bool send_events(int fd, struct input_event const events[],
 	return num_events == 0;
 }
 
-static void handle_input(struct input_state *st, int out_fd)
+static bool handle_input(struct input_state *st, int out_fd)
 {
 	struct input_event	ev;
 	ssize_t			l;
@@ -202,18 +210,16 @@ static void handle_input(struct input_state *st, int out_fd)
 	bool			do_submit = false;
 
 	l = read(st->fd, &ev, sizeof ev);
-	if (l == 0)
-		exit(2);
+	if (l == 0 || (l < 0 && errno == ENODEV))
+		return false;
+
 	if (l < 0) {
 		perror("read()");
 		exit(1);
 	}
 
-	if (l != sizeof ev) {
+	if (l != sizeof ev)
 		abort();
-		/* TODO */
-		return;
-	}
 
 	switch (ev.type) {
 	case EV_KEY:
@@ -363,11 +369,53 @@ static void handle_input(struct input_state *st, int out_fd)
 		st->key = 0;
 	}
 
+	return true;
 }
 
-static int open_uinput(void)
+static bool open_input(struct input_state *st, char const *filename)
 {
-	struct uinput_user_dev const	dev_info = {
+	static int const	ONE = 1;
+	int		fd = open(filename, O_RDONLY);
+	unsigned long	events_mask[(EV_CNT +
+				     sizeof(unsigned long) * 8 - 1)/
+				    (sizeof(unsigned long) * 8)];
+	int		rep[2] = {
+		[0] = 400,	/* delay */
+		[1] = 200,	/* 1/rate */
+	};
+
+	if (fd < 0) {
+		perror("open(<event>)");
+		return false;
+	}
+
+	if (ioctl(fd, EVIOCGRAB, &ONE) < 0 ||
+	    ioctl(fd, EVIOCGBIT(0, sizeof events_mask), events_mask) < 0) {
+		perror("ioctl(<GRAB/NAME>)");
+		close(fd);
+		return false;
+	}
+
+	if (ioctl(fd, EVIOCSREP, rep) < 0) {
+		fprintf(stderr, "failed to set repeat rate: %m");
+		/* no error; continue */
+	}
+
+	if (test_bit(EV_LED, events_mask))
+		st->type = tpKBD;
+	else
+		st->type = tpMOUSE;
+
+
+
+	st->fd = fd;
+	return true;
+}
+
+
+static int open_uinput(struct input_state *st)
+{
+	struct uinput_user_dev		dev_info = {
 		.name	= "HAMA emulated device",
 		.id	= {
 			.bustype	=  BUS_VIRTUAL,
@@ -377,23 +425,40 @@ static int open_uinput(void)
 		},
 	};
 
-	int			fd = open("/dev/uinput", O_WRONLY);
 	size_t			i;
+	int			fd = open("/dev/uinput", O_WRONLY);
 
 	if (fd < 0) {
 		perror("open(/dev/uinput");
 		return -1;
 	}
 
-	if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
-	    ioctl(fd, UI_SET_EVBIT, EV_REL) < 0 ||
-	    ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0 ||
-	    ioctl(fd, UI_SET_RELBIT, REL_X) < 0 ||
-	    ioctl(fd, UI_SET_RELBIT, REL_Y) < 0 ||
-	    ioctl(fd, UI_SET_RELBIT, REL_WHEEL) < 0 ||
-	    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
-		perror("ioctl(<SET_EVBIT>)");
-		goto err;
+	switch (st->type) {
+	case tpKBD:
+		strcat(dev_info.name, " (keyboard)");
+		dev_info.id.product = 1;
+		if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
+		    ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0 ||
+		    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
+			perror("ioctl(<SET_EVBIT>)");
+			goto err;
+		}
+		break;
+
+	case tpMOUSE:
+		strcat(dev_info.name, " (mouse)");
+		dev_info.id.product = 2;
+		if (ioctl(fd, UI_SET_EVBIT, EV_KEY) < 0 ||
+		    ioctl(fd, UI_SET_EVBIT, EV_REL) < 0 ||
+		    ioctl(fd, UI_SET_EVBIT, EV_MSC) < 0 ||
+		    ioctl(fd, UI_SET_RELBIT, REL_X) < 0 ||
+		    ioctl(fd, UI_SET_RELBIT, REL_Y) < 0 ||
+		    ioctl(fd, UI_SET_RELBIT, REL_WHEEL) < 0 ||
+		    ioctl(fd, UI_SET_MSCBIT, MSC_SCAN) < 0) {
+			perror("ioctl(<SET_EVBIT>)");
+			goto err;
+		}
+		break;
 	}
 
 	for (i = 0; i < ARRAY_SIZE(KEY_DEFS); ++i) {
@@ -418,37 +483,6 @@ static int open_uinput(void)
 err:
 	close(fd);
 	return -1;
-}
-
-struct event_file {
-	char const	*name;
-	char		buf[sizeof "/dev/input/event" + 3 * sizeof(int)];
-};
-
-static int fill_event_file(struct event_file *kbd,
-			   struct event_file *mouse,
-			   char const *opt)
-{
-	unsigned int	id_kbd;
-	unsigned int	id_mouse;
-	char		*err_ptr;
-
-	id_kbd = strtoul(opt, &err_ptr, 10);
-	if (*err_ptr != ' ')
-		return EX_USAGE;
-
-	opt = err_ptr+1;
-	id_mouse = strtoul(opt, &err_ptr, 10);
-	if (*err_ptr != '\0')
-		return EX_USAGE;
-
-	sprintf(kbd->buf, "/dev/input/event%u", id_kbd);
-	sprintf(mouse->buf, "/dev/input/event%u", id_mouse);
-
-	kbd->name = kbd->buf;
-	mouse->name = mouse->buf;
-
-	return 0;
 }
 
 static bool read_keymap(char const *fname)
@@ -529,12 +563,9 @@ static bool read_keymap(char const *fname)
 
 int main(int argc, char *argv[])
 {
-	struct input_state	in[2] = {};
+	struct input_state	in = { };
 	int			fd_out;
-	unsigned long		tmp;
-	struct event_file	event_kbd = { .name = NULL };
-	struct event_file	event_mouse = { .name = NULL };
-	int			rc;
+	char const		*event_filename = NULL;
 
 	for (;;) {
 		int	c;
@@ -544,13 +575,6 @@ int main(int argc, char *argv[])
 			break;
 
 		switch (c) {
-		case 'e':
-			rc = fill_event_file(&event_kbd, &event_mouse,
-					     optarg);
-			if (rc)
-				return rc;
-			break;
-
 		case 'k':
 			if (!read_keymap(optarg))
 				return EX_DATAERR;
@@ -562,74 +586,20 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (event_kbd.name != NULL) {
-		;			/* noop */
-	} else if (argc < optind + 2) {
+	if (argc < optind + 1) {
 		fprintf(stderr, "missing parameters\n");
 		return EX_USAGE;
 	} else {
-		event_kbd.name   = argv[optind + 0];
-		event_mouse.name = argv[optind + 1];
+		event_filename = argv[optind + 0];
 	}
 
-	in[0].fd = open(event_kbd.name,   O_RDONLY | O_NONBLOCK);
-	in[1].fd = open(event_mouse.name, O_RDONLY | O_NONBLOCK);
+	if (!open_input(&in, event_filename))
+		return EX_OSERR;
 
-	fd_out = open_uinput();
+	fd_out = open_uinput(&in);
 	if (fd_out < 0)
 		return EX_OSERR;
 
-	tmp = 1;
-	if (ioctl(in[0].fd, EVIOCGRAB, &tmp) < 0 ||
-	    ioctl(in[1].fd, EVIOCGRAB, &tmp) < 0) {
-		perror("ioctl(..., EVICGRAB)");
-		return EX_IOERR;
-	}
-
-	{
-		struct input_event	ev;
-		size_t			i;
-		int			rep[2] = {
-			[0] = 400,	/* delay */
-			[1] = 200,	/* 1/rate */
-		};
-
-		for (i = 0; i < ARRAY_SIZE(in); ++i) {
-			while (read(in[i].fd, &ev, sizeof ev) > 0)
-				;		/* noop */
-
-			ioctl(in[i].fd, EVIOCSREP, rep);
-		}
-	}
-
-	for (;;) {
-		size_t			i;
-		struct pollfd		fds[] = {
-			{
-				.fd = in[0].fd,
-				.events = POLLIN
-			},
-
-			{
-				.fd = in[1].fd,
-				.events = POLLIN
-			},
-
-			{
-				.fd = fd_out,
-			},
-		};
-
-		poll(fds, ARRAY_SIZE(fds), -1);
-
-		for (i = 0; i < ARRAY_SIZE(fds); ++i)
-			if (fds[i].revents & (POLLHUP|POLLERR|POLLNVAL))
-				exit(1);
-
-		for (i = 0; i < 2; ++i) {
-			if (fds[i].revents & POLLIN)
-				handle_input(&in[i], fd_out);
-		}
-	}
-
+	while (handle_input(&in, fd_out))
+		;
 }
