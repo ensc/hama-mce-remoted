@@ -3,6 +3,7 @@ Description = HAMA MCE remote control daemon
 
 [Service]
 Type=simple
+Environment = HAMA_MCE_KEYMAP=-/lib/udev/keymaps/hama-mce
 EnvironmentFile = -/etc/sysconfig/hama-mce-remoted
 ExecStartPre = -/sbin/modprobe -qab uinput
-ExecStart = /usr/sbin/hama-mce-remoted $HAMA_MCE_OPTS %I
+ExecStart = /usr/sbin/hama-mce-remoted --keymap ${HAMA_MCE_KEYMAP} $HAMA_MCE_OPTS %I

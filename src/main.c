@@ -25,17 +25,19 @@
 #include <getopt.h>
 #include <errno.h>
 #include <sysexits.h>
-
 #include <unistd.h>
+
 #include <fcntl.h>
 #include <poll.h>
 
 #include <sys/socket.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 
-#include <linux/input.h>
 #include <linux/uinput.h>
 #include <systemd/sd-daemon.h>
+
+#include "keymap-parser.h"
 
 #define ARRAY_SIZE(_a) (sizeof(_a) / sizeof((_a)[0]))
 
@@ -97,7 +99,7 @@ static struct key_definition 		KEY_DEFS[] = {
 	D( M(0,1,1,0,0), 50,		KEY_DVD ),
 
 	D( M(0,1,1,0,0), 48,		KEY_REWIND ),
-	D( M(0,1,1,0,0), 33,		KEY_FASTFORWARD ),
+	D( M(0,1,1,0,0), 33,		KEY_FORWARD ),
 	D( 0, KEY_PREVIOUSSONG,		KEY_PREVIOUSSONG ),
 	D( 0, KEY_NEXTSONG,		KEY_NEXTSONG ),
 
@@ -485,78 +487,95 @@ err:
 	return -1;
 }
 
-static bool read_keymap(char const *fname)
+static int read_keymap(char const *fname)
 {
-	FILE		*f = fopen(fname, "r");
-	char		*line = NULL;
-	size_t		line_sz = 0;
-	bool		rc = false;
-	unsigned int	line_num;
+	int	fds[2];
+	pid_t	pid;
+	int	rc = EX_OK;
 
-	if (!f) {
-		fprintf(stderr, "failed to open keymap file '%s': %m\n",
-			fname);
-		return false;
+	if (pipe(fds) < 0) {
+		perror(SD_ERR "pipe()");
+		return EX_OSERR;
 	}
 
-	for (line_num = 1;; ++line_num) {
-		ssize_t		l = getline(&line, &line_sz, f);
-		char		*ptr;
-		char		*err_ptr;
-		unsigned int	scancode;
-		unsigned int	keyid;
-
-		if (l < 0 && feof(f)) {
-			rc = true;
-			break;
-		} else if (l < 0) {
-			fprintf(stderr,
-				"failed to read from keymap file '%s': %m\n",
-				fname);
-			break;
-		}
-
-		ptr = strchr(line, '#');
-		if (ptr)
-			*ptr = '\0';
-
-		ptr = line;
-		while (isspace(*ptr))
-			++ptr;
-
-		scancode = strtoul(ptr, &err_ptr, 0);
-		if (err_ptr == ptr || !isspace(*err_ptr)) {
-			fprintf(stderr, SD_WARNING "%s:%u invalid scancode\n",
-				fname, line_num);
-			continue;
-		}
-
-		keyid = strtoul(ptr, &err_ptr, 0);
-		if (err_ptr == ptr || (!isspace(*err_ptr) && *err_ptr)) {
-			fprintf(stderr, SD_WARNING "%s:%u invalid keyid\n",
-				fname, line_num);
-			continue;
-		}
-
-		if (scancode >= ARRAY_SIZE(KEY_DEFS)) {
-			fprintf(stderr, SD_WARNING "%s:%u unknown scancode %u\n",
-				fname, line_num, scancode);
-			continue;
-		}
-
-		if (keyid >= KEY_MAX) {
-			fprintf(stderr, SD_WARNING "%s:%u unsupported keyid %u\n",
-				fname, line_num, scancode);
-			continue;
-		}
-
-		fprintf(stderr, SD_DEBUG "mapping %u to %04x\n",
-			scancode, keyid);
-
-		KEY_DEFS[scancode].code = keyid;
+	pid = fork();
+	if (pid < 0) {
+		perror(SD_ERR "fork(<keymap-parser)");
+		close(fds[0]);
+		close(fds[1]);
+		return EX_OSERR;
 	}
 
-	fclose(f);
+	if (pid == 0) {
+		char	buf[3 * sizeof(size_t) + 1];
+
+		if (dup2(fds[1], STDOUT_FILENO) < 0) {
+			perror(SD_ERR "dup2(<keymap-parser>)");
+			_exit(EX_OSERR);
+		}
+
+		close(fds[0]);
+		close(fds[1]);
+		close(0);
+		
+		sprintf(buf, "%zu", ARRAY_SIZE(KEY_DEFS));
+		execlp("hama-keymap-parser",
+		       "hama-keymap-parser", fname, buf,
+		       (char *)NULL);
+		perror(SD_ERR "execlp(hama-keymap-parser)");
+		_exit(EX_OSERR);
+	} else {
+		struct keymap_data_rpc	info;
+		int			status;
+
+		close(fds[1]);
+
+		for (;;) {
+			ssize_t	l = read(fds[0], &info, sizeof info);
+
+			if (l == 0) {
+				break;
+			} else if (l < 0) {
+				perror(SD_ERR "read(<keymap-parser>)");
+				rc = EX_OSERR;
+				break;
+			} else if ((size_t)l != sizeof info) {
+				fprintf(stderr, SD_ERR
+					"incomplete data read (%zd vs. %zu)\n",
+					l, sizeof info);
+				rc = EX_OSERR;
+				break;
+			} else if (info.scancode >= ARRAY_SIZE(KEY_DEFS) ||
+				   info.keyid >= KEY_MAX) {
+				fprintf(stderr, SD_ERR
+					"inconsistent data (%u, %04x)\n",
+					info.scancode, info.keyid);
+				rc = EX_OSERR;
+				break;
+			} else {
+				fprintf(stderr, SD_DEBUG "mapping %u to %04x\n",
+					info.scancode, info.keyid);
+				KEY_DEFS[info.scancode].code = info.keyid;
+			}
+		}
+
+		close(fds[0]);
+
+		if (waitpid(pid, &status, 0) < 0) {
+			perror(SD_ERR "waitpid(<keymap-parser>)");
+			if (rc == EX_OK)
+				rc = EX_OSERR;
+		} else if (!WIFEXITED(status) || WEXITSTATUS(status) != EX_OK) {
+			fprintf(stderr, SD_ERR
+				"keymap parser exited with %x\n", status);
+			if (rc != EX_OK)
+				;	/* noop */
+			else if (WIFEXITED(status))
+				rc = WEXITSTATUS(status);
+			else
+				rc = EX_SOFTWARE;
+		}
+	}
 
 	return rc;
 }
@@ -566,6 +585,7 @@ int main(int argc, char *argv[])
 	struct input_state	in = { };
 	int			fd_out;
 	char const		*event_filename = NULL;
+	int			rc;
 
 	for (;;) {
 		int	c;
@@ -576,8 +596,9 @@ int main(int argc, char *argv[])
 
 		switch (c) {
 		case 'k':
-			if (!read_keymap(optarg))
-				return EX_DATAERR;
+			rc = read_keymap(optarg);
+			if (rc != EX_OK)
+				return rc;
 			break;
 
 		default:
