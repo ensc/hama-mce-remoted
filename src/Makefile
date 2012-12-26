@@ -12,7 +12,6 @@ sbin_PROGRAMS =	hama-mce-remoted hama-keymap-parser
 
 PKG_CONFIG = pkg-config
 systemd_CFLAGS = $(shell $(PKG_CONFIG) --cflags libsystemd-daemon)
-systemd_LIBS   = $(shell $(PKG_CONFIG) --libs libsystemd-daemon)
 
 all:	${sbin_PROGRAMS} ${udev_PROGRAMS}
 
@@ -26,10 +25,10 @@ install:		${sbin_PROGRAMS} ${udev_PROGRAMS} | ${DESTDIR}${sbindir} ${DESTDIR}${u
 	${INSTALL_PROG} ${sbin_PROGRAMS} ${DESTDIR}${sbindir}/
 
 hama-mce-remoted:	main.c keymap-parser.h
-	${CC} ${AM_CFLAGS} ${sytemd_CFLAGS} ${CFLAGS} ${AM_LDFLAGS} $(LDFLAGS) $(filter %.c,$^) -o $@ ${systemd_LIBS}
+	${CC} ${AM_CFLAGS} ${systemd_CFLAGS} ${CFLAGS} ${AM_LDFLAGS} $(LDFLAGS) $(filter %.c,$^) -o $@
 
 hama-keymap-parser:	keymap-parser.c keymap-parser.h gen-keymap.h
-	${CC} ${AM_CFLAGS} ${sytemd_CFLAGS} ${CFLAGS} ${AM_LDFLAGS} $(LDFLAGS) $(filter %.c,$^) -o $@ ${systemd_LIBS}
+	${CC} ${AM_CFLAGS} ${CFLAGS} ${AM_LDFLAGS} $(LDFLAGS) $(filter %.c,$^) -o $@
 
 KEY_BLACKLIST = RESERVED\|MAX\|CNT
 
