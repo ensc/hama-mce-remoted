@@ -46,7 +46,9 @@
 #define dbg(_fmt, ...)	fprintf(stderr, SD_DEBUG _fmt, ## __VA_ARGS__)
 
 static struct option const	CMDLINE_OPTIONS[] = {
-	{ "keymap",      required_argument, NULL, 'k' },
+	{ "keymap",       required_argument, NULL, 'k' },
+	{ "repeat-delay", required_argument, NULL, 'D' },
+	{ "repeat-rate",  required_argument, NULL, 'R' },
 	{ }
 };
 
@@ -376,17 +378,14 @@ static bool handle_input(struct input_state *st, int out_fd)
 	return true;
 }
 
-static bool open_input(struct input_state *st, char const *filename)
+static bool open_input(struct input_state *st, char const *filename,
+		       int repeat_params[2])
 {
 	static int const	ONE = 1;
 	int		fd = open(filename, O_RDONLY);
 	unsigned long	events_mask[(EV_CNT +
 				     sizeof(unsigned long) * 8 - 1)/
 				    (sizeof(unsigned long) * 8)];
-	int		rep[2] = {
-		[0] = 400,	/* delay */
-		[1] = 200,	/* 1/rate */
-	};
 
 	if (fd < 0) {
 		err("open(<event>): %m");
@@ -400,7 +399,7 @@ static bool open_input(struct input_state *st, char const *filename)
 		return false;
 	}
 
-	if (ioctl(fd, EVIOCSREP, rep) < 0) {
+	if (ioctl(fd, EVIOCSREP, repeat_params) < 0) {
 		warn("failed to set repeat rate: %m");
 		/* no error; continue */
 	}
@@ -585,11 +584,12 @@ int main(int argc, char *argv[])
 	int			fd_out;
 	char const		*event_filename = NULL;
 	int			rc;
+	int			repeat_params[2] = { 250 ,100 };
 
 	for (;;) {
 		int	c;
 
-		c = getopt_long(argc, argv, "e:", CMDLINE_OPTIONS, NULL);
+		c = getopt_long(argc, argv, "e:D:R:", CMDLINE_OPTIONS, NULL);
 		if (c == -1)
 			break;
 
@@ -598,6 +598,14 @@ int main(int argc, char *argv[])
 			rc = read_keymap(optarg);
 			if (rc != EX_OK)
 				return rc;
+			break;
+
+		case 'D':
+			repeat_params[0] = atoi(optarg);
+			break;
+
+		case 'R':
+			repeat_params[1] = atoi(optarg);
 			break;
 
 		default:
@@ -613,7 +621,7 @@ int main(int argc, char *argv[])
 		event_filename = argv[optind + 0];
 	}
 
-	if (!open_input(&in, event_filename))
+	if (!open_input(&in, event_filename, repeat_params))
 		return EX_OSERR;
 
 	fd_out = open_uinput(&in);
